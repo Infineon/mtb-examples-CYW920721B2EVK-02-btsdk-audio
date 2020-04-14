@@ -428,7 +428,6 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
     int                                nvram_id;
     wiced_bt_dev_pairing_cplt_t        *p_pairing_cmpl;
     uint8_t                             pairing_result;
-    const uint8_t *link_key;
 
 #if (WICED_HCI_TRANSPORT == WICED_HCI_TRANSPORT_UART)
     WICED_BT_TRACE( "btheadset bluetooth management callback event: %d\n", event );
@@ -570,6 +569,10 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
 
             WICED_BT_TRACE( "Encryption Status:(%B) res:%d\n", p_encryption_status->bd_addr, p_encryption_status->result );
 
+#if 1
+            bt_hs_spk_control_btm_event_handler_encryption_status(p_encryption_status);
+#endif
+
 #if (WICED_APP_LE_SLAVE_CLIENT_INCLUDED == TRUE)
             if (p_encryption_status->transport == BT_TRANSPORT_LE)
                 le_slave_encryption_status_changed(p_encryption_status);
@@ -591,21 +594,11 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
             break;
 
         case BTM_PAIRED_DEVICE_LINK_KEYS_UPDATE_EVT:
-            /* Update the link key to database and NVRAM. */
-            bt_hs_spk_control_link_key_update(&p_event_data->paired_device_link_keys_update);
+            result = bt_hs_spk_control_btm_event_handler_link_key(event, &p_event_data->paired_device_link_keys_update) ? WICED_BT_SUCCESS : WICED_BT_ERROR;
             break;
 
-        case  BTM_PAIRED_DEVICE_LINK_KEYS_REQUEST_EVT:
-            /* read existing key from the NVRAM  */
-            if (bt_hs_spk_control_link_key_get(&p_event_data->paired_device_link_keys_request) == WICED_TRUE)
-            {
-                result = WICED_BT_SUCCESS;
-            }
-            else
-            {
-                result = WICED_BT_ERROR;
-            }
-
+        case BTM_PAIRED_DEVICE_LINK_KEYS_REQUEST_EVT:
+            result = bt_hs_spk_control_btm_event_handler_link_key(event, &p_event_data->paired_device_link_keys_request) ? WICED_BT_SUCCESS : WICED_BT_ERROR;
             break;
 
         case BTM_LOCAL_IDENTITY_KEYS_UPDATE_EVT:

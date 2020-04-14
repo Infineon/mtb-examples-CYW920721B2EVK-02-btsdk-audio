@@ -149,11 +149,24 @@ wiced_bt_a2dp_config_data_t bt_audio_config =
     }
 };
 
+/* It needs 14728 bytes for HFP(mSBC use mainly) and 14148 bytes for A2DP(jitter buffer use mainly) */
+#define AUDIO_BUF_SIZE_MAIN                 (15 * 1024)
+
+#ifdef A2DP_SINK_AAC_ENABLED
+/* For AAC, audio codec memory requires 21248 bytes and sample buffer required 2 * 4 1024 bytes */
+#define AUDIO_BUF_SIZE_CODEC                (21248 + (2 * 4 * 1024))
+#else
+/* SBC audio codec memory requires 6908 bytes */
+#define AUDIO_BUF_SIZE_CODEC                6908
+#endif
+
+#define AUDIO_CODEC_BUFFER_SIZE             (AUDIO_BUF_SIZE_MAIN + AUDIO_BUF_SIZE_CODEC)
+
 /**  Audio buffer configuration configuration */
 const wiced_bt_audio_config_buffer_t wiced_bt_audio_buf_config = {
     .role                       =   WICED_AUDIO_SINK_ROLE | WICED_HF_ROLE,
     .audio_tx_buffer_size       =   0,
-    .audio_codec_buffer_size    =   15*1024  /* It needs 14728 bytes for HFP(mSBC use mainly) and 14148 bytes for A2DP(jitter buffer use mainly) */
+    .audio_codec_buffer_size    =   AUDIO_CODEC_BUFFER_SIZE,
 };
 
 /** AVRC CT supported events. */
