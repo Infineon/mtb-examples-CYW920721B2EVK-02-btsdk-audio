@@ -51,9 +51,11 @@
 #include "bt_hs_spk_control.h"
 #include "wiced_memory.h"
 #include "wiced_app_cfg.h"
-#include "wiced_bt_gfps.h"
 #include "headset_nvram.h"
 #include "headset_control_le.h"
+#ifdef FASTPAIR_ENABLE
+#include "wiced_bt_gfps.h"
+#endif
 
 /******************************************************
  *                     Constants
@@ -70,8 +72,9 @@
 /* UUID value of the Hello Sensor Characteristic, Configuration */
 #define UUID_HELLO_CHARACTERISTIC_LONG_MSG    0x2a, 0x99, 0x17, 0x5a, 0x3f, 0x4b, 0x8e, 0xb6, 0x91, 0x54, 0x2f, 0x09, 0xb8, 0x02, 0xab, 0x6e
 
+#ifdef FASTPAIR_ENABLE
 /* MODEL-specific definitions */
-#ifdef CYW20721B2
+#if defined(CYW20721B2) || defined(CYW43012C0)
 #define FASTPAIR_MODEL_ID                   0x82DA6E
 #else
 #define FASTPAIR_MODEL_ID                   0xCE948F //0xB49236 //0x000107 //0x140A02 // 0xCE948F
@@ -101,62 +104,15 @@ const uint8_t anti_spoofing_private_key[] = "";
 #warning "No Anti-Spooging key"
 
 #endif
-
+#endif //FASTPAIR_ENABLE
 
 /******************************************************
  *                     Structures
  ******************************************************/
-typedef struct
-{
-#define LE_CONTROL_STATE_IDLE                       0
-#define LE_CONTROL_STATE_DISCOVER_PRIMARY_SERVICES  1
-#define LE_CONTROL_STATE_DISCOVER_CHARACTERISTICS   2
-#define LE_CONTROL_STATE_DISCOVER_DESCRIPTORS       3
-#define LE_CONTROL_STATE_READ_VALUE                 4
-#define LE_CONTROL_STATE_WRITE_VALUE                5
-#define LE_CONTROL_STATE_WRITE_NO_RESPONSE_VALUE    6
-#define LE_CONTROL_STATE_NOTIFY_VALUE               7
-#define LE_CONTROL_STATE_INDICATE_VALUE             8
-#define LE_CONTROL_STATE_WRITE_DESCRIPTOR_VALUE     9
-#define LE_CONTROL_STATE_DISCONNECTING              10
-
-    uint8_t           state;                // Application discovery state
-    wiced_bool_t      indication_sent;      // TRUE if indication sent and not acked
-    BD_ADDR           bd_addr;
-    uint16_t          conn_id;              // Connection ID used for exchange with the stack
-    uint16_t          peer_mtu;             // MTU received in the MTU request (or 23 if peer did not send MTU request)
-
-    uint8_t           role;                 // HCI_ROLE_MASTER or HCI_ROLE_SLAVE
-} hci_control_le_conn_state_t;
-
-typedef struct
-{
-    hci_control_le_conn_state_t conn[LE_CONTROL_MAX_CONNECTIONS + 1];
-} hci_control_le_cb_t;
-
-hci_control_le_cb_t le_control_cb;
-
-typedef struct t_hci_control_le_pending_tx_buffer_t
-{
-    wiced_bool_t        tx_buf_saved;
-    uint16_t            tx_buf_conn_id;
-    uint16_t            tx_buf_type;
-    uint16_t            tx_buf_len;
-    uint16_t            tx_buf_handle;
-    uint8_t             tx_buf_data[HCI_CONTROL_GATT_COMMAND_MAX_TX_BUFFER];
-} hci_control_le_pending_tx_buffer_t;
-
-wiced_timer_t hci_control_le_connect_timer;
-
 
 /******************************************************
  *               Variables Definitions
  ******************************************************/
-
-//uint8_t  hci_control_le_data_xfer_buf[20] = {0xff, 0xfe};
-BD_ADDR  hci_control_le_remote_bdaddr;
-
-hci_control_le_pending_tx_buffer_t hci_control_le_pending_tx_buffer;
 
 /******************************************************************************
  *                                GATT DATABASE
@@ -190,26 +146,6 @@ const uint8_t gatt_server_db[]=
         CHARACTERISTIC_UUID16( HANDLE_HSENS_GAP_SERVICE_CHAR_DEV_APPEARANCE, HANDLE_HSENS_GAP_SERVICE_CHAR_DEV_APPEARANCE_VAL,
                 GATT_UUID_GAP_ICON, LEGATTDB_CHAR_PROP_READ, LEGATTDB_PERM_READABLE ),
 
-    /* Declare proprietary Hello Service with 128 byte UUID */
-    PRIMARY_SERVICE_UUID128( HANDLE_HSENS_SERVICE, UUID_HELLO_SERVICE ),
-
-        /* Declare characteristic used to notify/indicate change */
-        CHARACTERISTIC_UUID128( HANDLE_HSENS_SERVICE_CHAR_NOTIFY, HANDLE_HSENS_SERVICE_CHAR_NOTIFY_VAL,
-            UUID_HELLO_CHARACTERISTIC_NOTIFY, LEGATTDB_CHAR_PROP_READ | LEGATTDB_CHAR_PROP_NOTIFY | LEGATTDB_CHAR_PROP_INDICATE, LEGATTDB_PERM_READABLE ),
-
-            /* Declare client characteristic configuration descriptor
-             * Value of the descriptor can be modified by the client
-             * Value modified shall be retained during connection and across connection
-             * for bonded devices.  Setting value to 1 tells this application to send notification
-             * when value of the characteristic changes.  Value 2 is to allow indications. */
-            CHAR_DESCRIPTOR_UUID16_WRITABLE( HANDLE_HSENS_SERVICE_CHAR_CFG_DESC, GATT_UUID_CHAR_CLIENT_CONFIG,
-                LEGATTDB_PERM_READABLE | LEGATTDB_PERM_WRITE_REQ),
-
-        /* Declare characteristic Hello Configuration */
-        CHARACTERISTIC_UUID128_WRITABLE( HANDLE_HSENS_SERVICE_CHAR_BLINK, HANDLE_HSENS_SERVICE_CHAR_BLINK_VAL,
-            UUID_HELLO_CHARACTERISTIC_CONFIG, LEGATTDB_CHAR_PROP_READ | LEGATTDB_CHAR_PROP_WRITE,
-            LEGATTDB_PERM_READABLE | LEGATTDB_PERM_WRITE_CMD | LEGATTDB_PERM_WRITE_REQ ),
-
     /* Declare Device info service */
     PRIMARY_SERVICE_UUID16( HANDLE_HSENS_DEV_INFO_SERVICE, UUID_SERVCLASS_DEVICE_INFO ),
 
@@ -232,6 +168,7 @@ const uint8_t gatt_server_db[]=
         CHARACTERISTIC_UUID16( HANDLE_HSENS_BATTERY_SERVICE_CHAR_LEVEL, HANDLE_HSENS_BATTERY_SERVICE_CHAR_LEVEL_VAL,
                 GATT_UUID_BATTERY_LEVEL, LEGATTDB_CHAR_PROP_READ, LEGATTDB_PERM_READABLE),
 
+#ifdef FASTPAIR_ENABLE
     // Declare Fast Pair service
     PRIMARY_SERVICE_UUID16 (HANDLE_FASTPAIR_SERVICE, WICED_BT_GFPS_UUID16),
 
@@ -264,6 +201,7 @@ const uint8_t gatt_server_db[]=
     CHAR_DESCRIPTOR_UUID16_WRITABLE(HANDLE_FASTPAIR_SERVICE_CHAR_ACCOUNT_KEY_CFG_DESC,
                                     UUID_DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION,
                                     LEGATTDB_PERM_AUTH_READABLE | LEGATTDB_PERM_WRITE_REQ),
+#endif
 
     /* WICED Upgrade Service. */
 #ifdef OTA_SECURE_FIRMWARE_UPGRADE
@@ -304,11 +242,9 @@ char    btheadset_sensor_char_model_num_value[] = { '1', '2', '3', '4',   0,   0
 uint8_t btheadset_sensor_char_system_id_value[] = { 0xbb, 0xb8, 0xa1, 0x80, 0x5f, 0x9f, 0x91, 0x71};
 
 static uint8_t btheadset_battery_level;
-static char blink_value;
 
 static char *p_headset_control_le_dev_name = NULL;
 static wiced_bt_ble_advert_elem_t headset_control_le_adv_elem = {0};
-
 attribute_t gauAttributes[] =
 {
     { HANDLE_HSENS_GAP_SERVICE_CHAR_DEV_NAME_VAL,       sizeof( btheadset_sensor_device_name ),         btheadset_sensor_device_name },
@@ -317,7 +253,6 @@ attribute_t gauAttributes[] =
     { HANDLE_HSENS_DEV_INFO_SERVICE_CHAR_MODEL_NUM_VAL, sizeof(btheadset_sensor_char_model_num_value),  btheadset_sensor_char_model_num_value },
     { HANDLE_HSENS_DEV_INFO_SERVICE_CHAR_SYSTEM_ID_VAL, sizeof(btheadset_sensor_char_system_id_value),  btheadset_sensor_char_system_id_value },
     { HANDLE_HSENS_BATTERY_SERVICE_CHAR_LEVEL_VAL,      1,                                            &btheadset_battery_level },
-    { HANDLE_HSENS_SERVICE_CHAR_BLINK_VAL,      1,                                            &blink_value },
 };
 /******************************************************
  *               Function Definitions
@@ -325,26 +260,14 @@ attribute_t gauAttributes[] =
 static wiced_bt_gatt_status_t hci_control_le_gatt_callback( wiced_bt_gatt_evt_t event, wiced_bt_gatt_event_data_t *p_data );
 static wiced_result_t         hci_control_le_connection_up( wiced_bt_gatt_connection_status_t *p_status );
 static wiced_result_t         hci_control_le_connection_down( wiced_bt_gatt_connection_status_t *p_status );
-static void                   hci_control_le_connect_timeout( uint32_t count );
 static wiced_result_t         hci_control_le_write_handler( uint16_t conn_id, wiced_bt_gatt_write_t * p_data );
-static void                   hci_control_le_notification_handler( uint16_t conn_id, uint16_t handle, uint8_t *p_data, uint16_t len );
-static void                   hci_control_le_indication_handler( uint16_t conn_id, uint16_t handle, uint8_t *p_data, uint16_t len );
-static void                   hci_control_le_indication_confirmation_handler( uint16_t conn_id, uint16_t handle );
-static void                   hci_control_le_num_complete_callback( void );
-static void                   hci_control_le_handle_gatt_db_init(uint8_t* data, uint32_t length);
 
-/*
- * Initialize LE Control
- */
-void hci_control_le_init( void )
-{
-    memset( &le_control_cb, 0, sizeof( le_control_cb ) );
-    memset( &hci_control_le_pending_tx_buffer, 0, sizeof( hci_control_le_pending_tx_buffer ) );
-}
 
 static void headset_control_le_discoverabilty_change_callback(wiced_bool_t discoverable)
 {
+#ifdef FASTPAIR_ENABLE
     wiced_bt_gfps_provider_discoverablility_set(discoverable);
+#endif
 }
 
 /*
@@ -353,7 +276,9 @@ static void headset_control_le_discoverabilty_change_callback(wiced_bool_t disco
 void hci_control_le_enable( void )
 {
     wiced_bt_gatt_status_t     gatt_status;
+#ifdef FASTPAIR_ENABLE
     wiced_bt_gfps_provider_conf_t fastpair_conf = {0};
+#endif
     char appended_ble_dev_name[] = " LE";
     uint8_t *p_index;
     uint16_t dev_name_len;
@@ -365,8 +290,13 @@ void hci_control_le_enable( void )
 
     WICED_BT_TRACE("wiced_bt_gatt_db_init %d\n", gatt_status);
 
+#ifdef FASTPAIR_ENABLE
     // set Tx power level data type in ble advertisement
+#if defined(CYW20719B2) || defined(CYW20721B2) || defined(CYW20819A1) || defined (CYW20820A1)
     fastpair_conf.ble_tx_pwr_level = wiced_bt_cfg_settings.default_ble_power_level;
+#else
+    fastpair_conf.ble_tx_pwr_level = 0;
+#endif
 
     // set GATT event callback
     fastpair_conf.p_gatt_cb = hci_control_le_gatt_callback;
@@ -438,59 +368,26 @@ void hci_control_le_enable( void )
         WICED_BT_TRACE("wiced_bt_gfps_provider_init fail\n");
     }
 
+#else
+    /* GATT registration */
+    gatt_status = wiced_bt_gatt_register( hci_control_le_gatt_callback );
+    WICED_BT_TRACE( "wiced_bt_gatt_register status %d\n", gatt_status );
+
+#endif
+
     /* Register the BLE discoverability change callback. */
     bt_hs_spk_ble_discoverability_change_callback_register(&headset_control_le_discoverabilty_change_callback);
 
-    /* Initialize connection timer */
-    wiced_init_timer( &hci_control_le_connect_timer, &hci_control_le_connect_timeout, 0, WICED_SECONDS_TIMER );
 }
 
-
-/*
- * Process advertisement packet received
- */
-void hci_control_le_scan_result_cback( wiced_bt_ble_scan_results_t *p_scan_result, uint8_t *p_adv_data )
-{
-    if ( p_scan_result )
-    {
-        WICED_BT_TRACE( " Device : %B\n", p_scan_result->remote_bd_addr );
-        //hci_control_le_send_advertisement_report( p_scan_result, p_adv_data );
-    }
-    else
-    {
-        WICED_BT_TRACE( " Scan completed\n" );
-    }
-}
 
 /*
  * Process connection up event
  */
 wiced_result_t hci_control_le_connection_up( wiced_bt_gatt_connection_status_t *p_status )
 {
-    uint32_t       conn_id = p_status->conn_id;
-    uint8_t        role;
+    WICED_BT_TRACE( "le_connection_up, id:%d bd (%B) role:%d\n:", p_status->conn_id, p_status->bd_addr);
 
-    wiced_bt_dev_get_role( p_status->bd_addr, &role, p_status->transport);
-    le_control_cb.conn[conn_id].role = role;
-
-    WICED_BT_TRACE( "hci_control_le_connection_up, id:%d bd (%B) role:%d\n:", p_status->conn_id, p_status->bd_addr, role );
-
-    /* Stop le connection timer*/
-    wiced_stop_timer( &hci_control_le_connect_timer );
-
-    memcpy( le_control_cb.conn[conn_id].bd_addr, p_status->bd_addr, BD_ADDR_LEN );
-    le_control_cb.conn[conn_id].state      = LE_CONTROL_STATE_IDLE;
-    le_control_cb.conn[conn_id].conn_id    = p_status->conn_id;
-    le_control_cb.conn[conn_id].peer_mtu   = GATT_DEF_BLE_MTU_SIZE;
-
-#if (WICED_APP_LE_SLAVE_CLIENT_INCLUDED == TRUE)
-    // ask master to set preferred connection parameters
-    wiced_bt_l2cap_update_ble_conn_params( p_status->bd_addr, 36, 72, 0, 200 );
-    le_slave_connection_up(p_status);
-#endif
-
-    //hci_control_le_send_connect_event(0 /* TBD should come from p_status */,
-    //        p_status->bd_addr, conn_id, role);
     return ( WICED_SUCCESS );
 }
 
@@ -499,30 +396,7 @@ wiced_result_t hci_control_le_connection_up( wiced_bt_gatt_connection_status_t *
 */
 wiced_result_t hci_control_le_connection_down( wiced_bt_gatt_connection_status_t *p_status )
 {
-    uint16_t          conn_id = p_status->conn_id;
-
-    WICED_BT_TRACE( "le_connection_down conn_id:%x Disc_Reason: %02x\n", conn_id, p_status->reason );
-
-    /* Stop le connection timer*/
-    wiced_stop_timer( &hci_control_le_connect_timer );
-
-    le_control_cb.conn[conn_id].state   = LE_CONTROL_STATE_IDLE;
-    le_control_cb.conn[conn_id].conn_id = 0;
-
-    if ( ( conn_id == hci_control_le_pending_tx_buffer.tx_buf_conn_id ) &&
-                    ( hci_control_le_pending_tx_buffer.tx_buf_saved ) )
-    {
-        hci_control_le_pending_tx_buffer.tx_buf_saved = WICED_FALSE;
-    }
-
-#if (WICED_APP_LE_SLAVE_CLIENT_INCLUDED == TRUE)
-    if (le_control_cb.conn[conn_id].role != HCI_ROLE_MASTER)
-    {
-        le_slave_connection_down(p_status);
-    }
-#endif
-
-    //hci_control_le_send_disconnect_evt( p_status->reason, conn_id );
+    WICED_BT_TRACE( "le_connection_down id:%x Disc_Reason: %02x\n", p_status->conn_id, p_status->reason );
 
     return ( WICED_SUCCESS );
 }
@@ -533,7 +407,9 @@ wiced_result_t hci_control_le_connection_down( wiced_bt_gatt_connection_status_t
 */
 wiced_result_t hci_control_le_conn_status_callback( wiced_bt_gatt_connection_status_t *p_status )
 {
+#ifdef OTA_FW_UPGRADE
     wiced_ota_fw_upgrade_connection_status_event(p_status);
+#endif
 
     if ( p_status->connected )
     {
@@ -545,136 +421,6 @@ wiced_result_t hci_control_le_conn_status_callback( wiced_bt_gatt_connection_sta
     }
 }
 
-/*
- * Operation complete received from the GATT server
- */
-wiced_result_t hci_control_le_gatt_operation_comp_cb( wiced_bt_gatt_operation_complete_t *p_complete )
-{
-    uint16_t conn_id = p_complete->conn_id;
-
-    switch ( p_complete->op )
-    {
-    case GATTC_OPTYPE_DISCOVERY:
-        WICED_BT_TRACE( "!!! Disc compl conn_id:%d state:%d\n", conn_id, le_control_cb.conn[conn_id].state );
-        break;
-
-    case GATTC_OPTYPE_READ:
-        // read response received, pass it up and set state to idle
-        WICED_BT_TRACE( "Read response conn_id:%d state:%d\n", conn_id, le_control_cb.conn[conn_id].state );
-        if ( le_control_cb.conn[conn_id].state == LE_CONTROL_STATE_READ_VALUE )
-        {
-            le_control_cb.conn[conn_id].state = LE_CONTROL_STATE_IDLE;
-        }
-        break;
-
-    case GATTC_OPTYPE_WRITE:
-    case GATTC_OPTYPE_EXE_WRITE:
-        // write response received, pass it up and set state to idle
-        WICED_BT_TRACE( "Write response conn_id:%d state:%d\n", conn_id, le_control_cb.conn[conn_id].state );
-        if ( le_control_cb.conn[conn_id].state == LE_CONTROL_STATE_WRITE_VALUE )
-        {
-            le_control_cb.conn[conn_id].state = LE_CONTROL_STATE_IDLE;
-            //hci_control_le_send_write_completed( conn_id, p_complete->status );
-        }
-        break;
-
-    case GATTC_OPTYPE_CONFIG:
-        WICED_BT_TRACE( "Config conn_id:%d state:%d\n", conn_id, le_control_cb.conn[conn_id].state );
-        break;
-
-    case GATTC_OPTYPE_NOTIFICATION:
-        WICED_BT_TRACE( "Notification conn_id:%d state:%d\n", conn_id, le_control_cb.conn[conn_id].state );
-        hci_control_le_notification_handler( conn_id,
-                p_complete->response_data.att_value.handle,
-                p_complete->response_data.att_value.p_data,
-                p_complete->response_data.att_value.len );
-        break;
-
-    case GATTC_OPTYPE_INDICATION:
-        WICED_BT_TRACE( "Indication conn_id:%d state:%d\n", conn_id, le_control_cb.conn[conn_id].state );
-        hci_control_le_indication_handler( conn_id,
-                p_complete->response_data.att_value.handle,
-                p_complete->response_data.att_value.p_data,
-                p_complete->response_data.att_value.len );
-        break;
-    }
-    return ( WICED_SUCCESS );
-}
-
-/*
- * Discovery result received from the GATT server
- */
-wiced_result_t hci_control_le_gatt_disc_result_cb( wiced_bt_gatt_discovery_result_t *p_result )
-{
-    uint16_t conn_id = p_result->conn_id;
-
-    WICED_BT_TRACE( "Discovery result conn_id:%d state:%d\n", conn_id, le_control_cb.conn[conn_id].state );
-
-    switch ( le_control_cb.conn[conn_id].state )
-    {
-    case LE_CONTROL_STATE_DISCOVER_PRIMARY_SERVICES:
-        if ( ( p_result->discovery_type == GATT_DISCOVER_SERVICES_ALL ) ||
-            ( p_result->discovery_type == GATT_DISCOVER_SERVICES_BY_UUID ) )
-        {
-            WICED_BT_TRACE( "Service s:%04x e:%04x uuid:%04x\n", p_result->discovery_data.group_value.s_handle,
-                    p_result->discovery_data.group_value.e_handle, p_result->discovery_data.group_value.service_type.uu.uuid16 );
-#if 0
-            // services on the server can be based on 2 or 16 bytes UUIDs
-            if ( p_result->discovery_data.group_value.service_type.len == 2 )
-            {
-                //hci_control_le_send_discovered_service16( conn_id, p_result->discovery_data.group_value.service_type.uu.uuid16,
-                //        p_result->discovery_data.group_value.s_handle, p_result->discovery_data.group_value.e_handle );
-            }
-            else
-            {
-                //hci_control_le_send_discovered_service128( conn_id, p_result->discovery_data.group_value.service_type.uu.uuid128,
-                //        p_result->discovery_data.group_value.s_handle, p_result->discovery_data.group_value.e_handle );
-            }
-#endif
-        }
-        break;
-
-    case LE_CONTROL_STATE_DISCOVER_CHARACTERISTICS:
-        if ( p_result->discovery_type == GATT_DISCOVER_CHARACTERISTICS )
-        {
-            WICED_BT_TRACE( "Found cha - uuid:%04x, hdl:%04x\n", p_result->discovery_data.characteristic_declaration.char_uuid.uu.uuid16, p_result->discovery_data.characteristic_declaration.handle );
-        }
-        break;
-
-    case LE_CONTROL_STATE_DISCOVER_DESCRIPTORS:
-        if ( p_result->discovery_type == GATT_DISCOVER_CHARACTERISTIC_DESCRIPTORS )
-        {
-            WICED_BT_TRACE( "Found descr - uuid:%04x handle:%04x\n", p_result->discovery_data.char_descr_info.type.uu.uuid16, p_result->discovery_data.char_descr_info.handle );
-#if 0
-            // descriptor can be based on 2 or 16 bytes UUIDs
-            if ( p_result->discovery_data.char_descr_info.type.len == 2 )
-            {
-                //hci_control_le_send_discovered_descriptor16( conn_id, p_result->discovery_data.char_descr_info.handle, p_result->discovery_data.char_descr_info.type.uu.uuid16 );
-            }
-            else
-            {
-                //hci_control_le_send_discovered_descriptor128( conn_id, p_result->discovery_data.char_descr_info.handle, p_result->discovery_data.char_descr_info.type.uu.uuid128 );
-            }
-#endif
-        }
-        break;
-
-    default:
-        WICED_BT_TRACE( "ignored\n" );
-        break;
-    }
-    return ( WICED_SUCCESS );
-}
-
-/*
- * process discovery complete notification from the stack
- */
-wiced_result_t hci_control_le_gatt_disc_comp_cb( wiced_bt_gatt_discovery_complete_t *p_data )
-{
-    // if we got here peer returned no more services, or we read up to the handle asked by client, report complete
-    le_control_cb.conn[p_data->conn_id].state = LE_CONTROL_STATE_IDLE;
-    return ( WICED_SUCCESS );
-}
 
 /*
  * Find attribute description by handle
@@ -754,28 +500,19 @@ wiced_bt_gatt_status_t hci_control_le_get_value( uint16_t conn_id, wiced_bt_gatt
 
 wiced_bt_gatt_status_t hci_control_le_read_handler( uint16_t conn_id, wiced_bt_gatt_read_t *p_req )
 {
+#ifdef OTA_FW_UPGRADE
     if (wiced_ota_fw_upgrade_is_gatt_handle(p_req->handle))
     {
         return wiced_ota_fw_upgrade_read_handler(conn_id, p_req);
     }
+#endif
 
-    WICED_BT_TRACE("[%s] [%d] [handle:%d] [conn_id:%d] [val:%d] [length:%d] \n",
-            __func__, __LINE__, p_req->handle, conn_id, p_req->p_val,  p_req->p_val_len);
+    WICED_BT_TRACE("handle:%d, conn_id:%d val:%d length:%d\n"
+            , p_req->handle, conn_id, p_req->p_val,  p_req->p_val_len);
 
     return  hci_control_le_get_value(conn_id, p_req);
 }
 
-/*
- * The function invoked on timeout of hci_control_le_connect_timer
- */
-void hci_control_le_connect_timeout( uint32_t count )
-{
-    /* Stop le connection timer*/
-    wiced_stop_timer( &hci_control_le_connect_timer );
-
-    /* Cancel connection request */
-    wiced_bt_gatt_cancel_connect( hci_control_le_remote_bdaddr, WICED_TRUE );
-}
 
 /*
  * This function is called when peer issues a Write request to access characteristics values
@@ -783,54 +520,32 @@ void hci_control_le_connect_timeout( uint32_t count )
  */
 wiced_result_t hci_control_le_write_handler( uint16_t conn_id, wiced_bt_gatt_write_t *p_req )
 {
+#ifdef OTA_FW_UPGRADE
     if (wiced_ota_fw_upgrade_is_gatt_handle(p_req->handle))
     {
         return wiced_ota_fw_upgrade_write_handler(conn_id, p_req);
     }
+#endif
 
-    wiced_bt_gatt_status_t status = WICED_BT_GATT_PENDING;
-    uint8_t attribute_value = *(uint8_t *)p_req->p_val;
+    WICED_BT_TRACE( "hci_control_le_write_handler: conn_id:%d handle:%04x\n", conn_id, p_req->handle);
 
-
-    WICED_BT_TRACE( "hci_control_le_write_handler: conn_id:%d handle:%04x value:%i\n", conn_id, p_req->handle, attribute_value );
-    switch ( p_req->handle )
-    {
-    case HANDLE_HSENS_SERVICE_CHAR_BLINK_VAL:
-        WICED_BT_TRACE( "hci_control_le_write_handler: conn_id:%d handle:%04x value:%d length : %d \n", conn_id, p_req->handle, attribute_value, p_req->val_len );
-        blink_value = attribute_value;
-        status = WICED_BT_GATT_SUCCESS;
-        break;
-    default:
-	if (status == WICED_BT_GATT_PENDING)
-		WICED_BT_TRACE( "hci_control_le_write_handler: conn_id:%d handle:%04x value:%d length : %d \n", conn_id, p_req->handle, attribute_value, p_req->val_len );
-	break;
-    }
-    return ( status );
+    return ( WICED_BT_GATT_SUCCESS );
 }
 
-wiced_result_t hci_control_le_write_exec_handler( uint16_t conn_id, wiced_bt_gatt_exec_flag_t flag )
-{
-    return ( WICED_SUCCESS );
-}
-
-wiced_result_t hci_control_le_mtu_handler( uint16_t conn_id, uint16_t mtu )
-{
-    le_control_cb.conn[conn_id].peer_mtu   = mtu;
-
-    return ( WICED_SUCCESS );
-}
 
 /*
  * Process indication confirm.
  */
 wiced_result_t  hci_control_le_conf_handler( uint16_t conn_id, uint16_t handle )
 {
+#ifdef OTA_FW_UPGRADE
     if (wiced_ota_fw_upgrade_is_gatt_handle(handle))
     {
         return wiced_ota_fw_upgrade_indication_cfm_handler(conn_id, handle);
     }
+#endif
 
-    WICED_BT_TRACE( "hci_control_le_conf_handler conn_id:%d state:%d handle:%x\n", conn_id, le_control_cb.conn[conn_id].state, handle );
+    WICED_BT_TRACE( "hci_control_le_conf_handler conn_id:%d handle:%x\n", conn_id, handle );
 
     return WICED_SUCCESS;
 }
@@ -841,7 +556,6 @@ wiced_result_t  hci_control_le_conf_handler( uint16_t conn_id, uint16_t handle )
 wiced_bt_gatt_status_t hci_control_le_gatt_req_cb( wiced_bt_gatt_attribute_request_t *p_req )
 {
     wiced_bt_gatt_status_t result  = WICED_BT_GATT_SUCCESS;
-    uint16_t               conn_id = p_req->conn_id;
 
     switch ( p_req->request_type )
     {
@@ -854,12 +568,8 @@ wiced_bt_gatt_status_t hci_control_le_gatt_req_cb( wiced_bt_gatt_attribute_reque
             result = hci_control_le_write_handler( p_req->conn_id, &p_req->data.write_req );
              break;
 
-        case GATTS_REQ_TYPE_WRITE_EXEC:
-            result = hci_control_le_write_exec_handler( p_req->conn_id, p_req->data.exec_write );
-            break;
-
         case GATTS_REQ_TYPE_MTU:
-            result = hci_control_le_mtu_handler( p_req->conn_id, p_req->data.mtu );
+		WICED_BT_TRACE( "conn_id:%d mtu:%x\n", p_req->conn_id, p_req->data.mtu);
             break;
 
         case GATTS_REQ_TYPE_CONF:
@@ -867,7 +577,7 @@ wiced_bt_gatt_status_t hci_control_le_gatt_req_cb( wiced_bt_gatt_attribute_reque
             break;
 
        default:
-            WICED_BT_TRACE("Invalid GATT request conn_id:%d type:%d\n", conn_id, p_req->request_type);
+            WICED_BT_TRACE("Invalid GATT request conn_id:%d type:%d\n", p_req->conn_id, p_req->request_type);
             break;
     }
 
@@ -885,30 +595,15 @@ wiced_bt_gatt_status_t hci_control_le_gatt_callback( wiced_bt_gatt_evt_t event, 
         break;
 
     case GATT_OPERATION_CPLT_EVT:
-#if (WICED_APP_LE_SLAVE_CLIENT_INCLUDED == TRUE)
-        if (le_control_cb.conn[p_data->operation_complete.conn_id].role == HCI_ROLE_SLAVE)
-            result = le_slave_gatt_operation_complete(&p_data->operation_complete);
-        else
-#endif
-            result = hci_control_le_gatt_operation_comp_cb( &p_data->operation_complete );
+	WICED_BT_TRACE( "ERROR...GATT_OPERATION_CPLT_EVT\n");
         break;
 
     case GATT_DISCOVERY_RESULT_EVT:
-#if (WICED_APP_LE_SLAVE_CLIENT_INCLUDED == TRUE)
-        if (le_control_cb.conn[p_data->discovery_result.conn_id].role == HCI_ROLE_SLAVE)
-            result = le_slave_gatt_discovery_result( &p_data->discovery_result );
-        else
-#endif
-            result = hci_control_le_gatt_disc_result_cb( &p_data->discovery_result );
+	WICED_BT_TRACE( "ERROR...GATT_DISCOVERY_RESULT_EVT%d\n");
         break;
 
     case GATT_DISCOVERY_CPLT_EVT:
-#if (WICED_APP_LE_SLAVE_CLIENT_INCLUDED == TRUE)
-        if (le_control_cb.conn[p_data->discovery_complete.conn_id].role == HCI_ROLE_SLAVE)
-            result = le_slave_gatt_discovery_complete( &p_data->discovery_complete );
-        else
-#endif
-            result = hci_control_le_gatt_disc_comp_cb( &p_data->discovery_complete );
+	WICED_BT_TRACE( "ERROR...GATT_DISCOVERY_CPLT_EVT\n");
         break;
 
     case GATT_ATTRIBUTE_REQUEST_EVT:
@@ -922,173 +617,3 @@ wiced_bt_gatt_status_t hci_control_le_gatt_callback( wiced_bt_gatt_evt_t event, 
     return result;
 }
 
-/*
- * This function sends write to the peer GATT server
- * */
-wiced_bt_gatt_status_t hci_control_le_send_write( uint8_t conn_id, uint16_t attr_handle, uint8_t *p_data, uint16_t len, wiced_bt_gatt_write_type_t type )
-{
-    wiced_bt_gatt_status_t status = WICED_BT_GATT_INSUF_RESOURCE;
-
-    // Allocating a buffer to send the write request
-    wiced_bt_gatt_value_t *p_write = ( wiced_bt_gatt_value_t* )wiced_bt_get_buffer( GATT_RESPONSE_SIZE( 2 ) );
-
-    if ( p_write )
-    {
-        p_write->handle   = attr_handle;
-        p_write->offset   = 0;
-        p_write->len      = len;
-        p_write->auth_req = GATT_AUTH_REQ_NONE;
-        memcpy( p_write->value, p_data, len );
-
-        // Register with the server to receive notification
-        status = wiced_bt_gatt_send_write ( conn_id, type, p_write );
-
-        WICED_BT_TRACE( "wiced_bt_gatt_send_write ", status );
-
-        wiced_bt_free_buffer( p_write );
-    }
-    return ( status );
-}
-
-/*
- * Num complete callback
- */
-void hci_control_le_num_complete_callback( void )
-{
-    uint16_t             handle;
-    uint16_t             conn_id;
-    static int           last_connection_serviced = 0;
-    int                  i;
-
-    //WICED_BT_TRACE( "hci_control_le_num_complete_callback available buffs:%d\n", wiced_bt_ble_get_available_tx_buffers( ) );
-
-    if ( hci_control_le_pending_tx_buffer.tx_buf_saved && ( wiced_bt_ble_get_available_tx_buffers( ) > 1 ) )
-    {
-        WICED_BT_TRACE( "service conn_id:%d\n", hci_control_le_pending_tx_buffer.tx_buf_conn_id );
-
-        // saved tx buffer can be write command, or notification.
-        if ( hci_control_le_pending_tx_buffer.tx_buf_type == HCI_CONTROL_GATT_COMMAND_WRITE_COMMAND )
-        {
-            if ( hci_control_le_send_write( hci_control_le_pending_tx_buffer.tx_buf_conn_id, hci_control_le_pending_tx_buffer.tx_buf_handle,
-                            hci_control_le_pending_tx_buffer.tx_buf_data, hci_control_le_pending_tx_buffer.tx_buf_len, GATT_WRITE_NO_RSP ) != WICED_BT_GATT_SUCCESS )
-            {
-                    return;
-            }
-        }
-        else if ( hci_control_le_pending_tx_buffer.tx_buf_type == HCI_CONTROL_GATT_COMMAND_NOTIFY )
-        {
-            if ( wiced_bt_gatt_send_notification( hci_control_le_pending_tx_buffer.tx_buf_conn_id, hci_control_le_pending_tx_buffer.tx_buf_handle,
-                            hci_control_le_pending_tx_buffer.tx_buf_len, hci_control_le_pending_tx_buffer.tx_buf_data ) != WICED_BT_GATT_SUCCESS )
-            {
-                    return;
-            }
-        }
-        else
-        {
-            WICED_BT_TRACE( "bad packet queued:%d\n", hci_control_le_pending_tx_buffer.tx_buf_type );
-        }
-        // tx_buffer sent successfully, clear tx_buf_saved flag
-        hci_control_le_pending_tx_buffer.tx_buf_saved = WICED_FALSE;
-    }
-}
-
-/*
- * Stack runs the advertisement state machine switching between high duty, low
- * duty, no advertisements, based on the wiced_cfg.  All changes are notified
- * through this callback.
- */
-void hci_control_le_advert_state_changed( wiced_bt_ble_advert_mode_t mode )
-{
-#if 0
-    uint8_t hci_control_le_event;
-
-    WICED_BT_TRACE( "Advertisement State Change:%d\n", mode );
-
-    switch ( mode )
-    {
-    case BTM_BLE_ADVERT_OFF:
-        hci_control_le_event = LE_ADV_STATE_NO_DISCOVERABLE;
-        break;
-    case BTM_BLE_ADVERT_DIRECTED_HIGH:
-    case BTM_BLE_ADVERT_UNDIRECTED_HIGH:
-    case BTM_BLE_ADVERT_NONCONN_HIGH:
-    case BTM_BLE_ADVERT_DISCOVERABLE_HIGH:
-        hci_control_le_event = LE_ADV_STATE_HIGH_DISCOVERABLE;
-        break;
-    case BTM_BLE_ADVERT_DIRECTED_LOW:
-    case BTM_BLE_ADVERT_UNDIRECTED_LOW:
-    case BTM_BLE_ADVERT_NONCONN_LOW:
-    case BTM_BLE_ADVERT_DISCOVERABLE_LOW:
-        hci_control_le_event = LE_ADV_STATE_LOW_DISCOVERABLE;
-        break;
-    }
-    //hci_control_le_send_advertisement_state_event( hci_control_le_event );
-#endif
-}
-
-/*
- * Stack runs the scan state machine switching between high duty, low
- * duty, no scan, based on the wiced_cfg.  All changes are notified
- * through this callback.
- */
-void hci_control_le_scan_state_changed( wiced_bt_ble_scan_type_t state )
-{
-#if 0
-    uint8_t hci_control_le_event;
-
-    WICED_BT_TRACE( "Scan State Changed:%d\n", state );
-
-    switch ( state )
-    {
-    case BTM_BLE_SCAN_TYPE_NONE:
-        hci_control_le_event = HCI_CONTROL_SCAN_EVENT_NO_SCAN;
-        break;
-    case BTM_BLE_SCAN_TYPE_HIGH_DUTY:
-        hci_control_le_event = HCI_CONTROL_SCAN_EVENT_HIGH_SCAN;
-        break;
-    case BTM_BLE_SCAN_TYPE_LOW_DUTY:
-        hci_control_le_event = HCI_CONTROL_SCAN_EVENT_LOW_SCAN;
-        break;
-    }
-#endif
-}
-
-/*
- * This function is called when notification is received from the connected GATT Server
- */
-void hci_control_le_notification_handler( uint16_t conn_id, uint16_t handle, uint8_t *p_data, uint16_t len )
-{
-    WICED_BT_TRACE( "Notification conn_id:%d handle:%04x len:%d\n", conn_id, handle, len );
-
-    wiced_bt_gatt_send_notification ( conn_id, handle, len, p_data );
-}
-
-/*
- * This function is called when indication is received from the connected GATT Server
- */
-void hci_control_le_indication_handler( uint16_t conn_id, uint16_t handle, uint8_t *p_data, uint16_t len )
-{
-    WICED_BT_TRACE( "Indication conn_id:%d handle:%04x len:%d\n", conn_id, handle, len );
-
-    wiced_bt_gatt_send_indication ( conn_id, handle, len, p_data );
-}
-
-void hci_control_le_indication_confirmation_handler( uint16_t conn_id, uint16_t handle )
-{
-    WICED_BT_TRACE("INDICATION CONFIRMATION\n");
-    wiced_bt_gatt_send_indication_confirm( conn_id, handle );
-}
-
-static void hci_control_le_handle_gatt_db_init(uint8_t* data, uint32_t length)
-{
-    wiced_bt_gatt_status_t gatt_status;
-
-    WICED_BT_TRACE("Initializing GATT database...\n");
-
-    gatt_status = wiced_bt_gatt_db_init(data, length);
-    if( gatt_status != WICED_BT_GATT_SUCCESS )
-    {
-        WICED_BT_TRACE("Error initializing GATT callback...error: %d\n", gatt_status);
-        return;
-    }
-}

@@ -273,8 +273,8 @@ const wiced_bt_cfg_settings_t wiced_bt_cfg_settings =
     .gatt_cfg =                                                     /* GATT configuration */
     {
         .appearance                     = APPEARANCE_GENERIC_TAG,                                      /**< GATT appearance (see gatt_appearance_e) */
-        .client_max_links               = 3,                                                           /**< Client config: maximum number of servers that local client can connect to  */
-        .server_max_links               = 3,                                                           /**< Server config: maximum number of remote clients connections allowed by the local */
+        .client_max_links               = 0,                                                           /**< Client config: maximum number of servers that local client can connect to  */
+        .server_max_links               = 2,                                                           /**< Server config: maximum number of remote clients connections allowed by the local */
         .max_attr_len                   = 360,                                                         /**< Maximum attribute length; gki_cfg must have a corresponding buffer pool that can hold this length */
 #if !defined(CYW20706A2)
         .max_mtu_size                   = 365                                                          /**< Maximum MTU size for GATT connections, should be between 23 and (max_attr_len + 5) */
@@ -289,11 +289,11 @@ const wiced_bt_cfg_settings_t wiced_bt_cfg_settings =
 
     .l2cap_application =                                            /* Application managed l2cap protocol configuration */
     {
-        .max_links                      = 6,                                                           /**< Maximum number of application-managed l2cap links (BR/EDR and LE) */
+        .max_links                      = 0,                                                           /**< Maximum number of application-managed l2cap links (BR/EDR and LE) */
 
         /* BR EDR l2cap configuration */
-        .max_psm                        = 7,                                                           /**< Maximum number of application-managed BR/EDR PSMs */
-        .max_channels                   = 12,                                                          /**< Maximum number of application-managed BR/EDR channels  */
+        .max_psm                        = 0,                                                           /**< Maximum number of application-managed BR/EDR PSMs */
+        .max_channels                   = 0,                                                           /**< Maximum number of application-managed BR/EDR channels  */
 
         /* LE L2cap connection-oriented channels configuration */
         .max_le_psm                     = 0,                                                           /**< Maximum number of application-managed LE PSMs */

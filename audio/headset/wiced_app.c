@@ -49,9 +49,5 @@ APPLICATION_START( )
 {
     btheadset_control_init();
 
-#if (WICED_APP_LE_INCLUDED == TRUE)
-    hci_control_le_init();
-#endif
-
     WICED_BT_TRACE( "Wiced headset_pro Application Started...\n" );
 }

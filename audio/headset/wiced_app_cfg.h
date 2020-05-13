@@ -44,9 +44,14 @@
 #include "wiced_bt_cfg.h"
 #include "wiced_bt_audio.h"
 
+#ifdef OTA_FW_UPGRADE
+#define OFU_SPP_RFCOMM_PORT_COUNT   1
+#else
+#define OFU_SPP_RFCOMM_PORT_COUNT   0
+#endif
+
 enum
 {
-    OFU_SPP_RFCOMM_PORT_COUNT = 1,
     OFU_SPP_RFCOMM_SCN = 2,
 };
 

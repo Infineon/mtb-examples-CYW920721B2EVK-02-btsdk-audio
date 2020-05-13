@@ -105,8 +105,10 @@
 #include "wiced_audio_manager.h"
 #include "wiced_hal_gpio.h"
 #include "hci_control_api.h"
-#include "wiced_bt_gfps.h"
 #include "headset_nvram.h"
+#ifdef FASTPAIR_ENABLE
+#include "wiced_bt_gfps.h"
+#endif
 #ifdef AUTO_ELNA_SWITCH
 #include "cycfg_pins.h"
 #include "wiced_hal_rfm.h"
@@ -171,6 +173,11 @@ const wiced_transport_cfg_t transport_cfg =
 #endif
     .p_tx_complete_cback = NULL,
 };
+
+#if defined(CYW43012C0)
+/* to adjust memory for audio application */
+uint8_t g_wiced_memory_pre_init_enable = 1;
+#endif
 
 extern const uint8_t btheadset_sdp_db[];
 
@@ -261,10 +268,19 @@ void btheadset_control_init( void )
     // Set the debug uart as WICED_ROUTE_DEBUG_NONE to get rid of prints
     // wiced_set_debug_uart(WICED_ROUTE_DEBUG_NONE);
 
+#ifdef NO_PUART_SUPPORT
+#if defined(CYW43012C0)
+    wiced_debug_uart = WICED_ROUTE_DEBUG_TO_DBG_UART;
+    debug_uart_enable(3000000);
+#else // CYW43012C0
+    wiced_set_debug_uart(WICED_ROUTE_DEBUG_TO_WICED_UART);
+#endif // CYW43012C0
+#else // NO_PUART_SUPPORT
     // Set to PUART to see traces on peripheral uart(puart)
     wiced_hal_puart_init();
     wiced_hal_puart_configuration(3000000, PARITY_NONE,STOP_BIT_2);
     wiced_set_debug_uart( WICED_ROUTE_DEBUG_TO_PUART );
+#endif // NO_PUART_SUPPORT
 
     // Set to HCI to see traces on HCI uart - default if no call to wiced_set_debug_uart()
     // wiced_set_debug_uart( WICED_ROUTE_DEBUG_TO_HCI_UART );
@@ -362,12 +378,14 @@ wiced_result_t btheadset_post_bt_init(void)
                                               WICED_BT_HFP_HF_FEATURE_ESCO_S4_T2_SETTINGS_SUPPORT;
 #endif
 
+#if !defined(CYW43012C0)
     config.sleep_config.enable                  = WICED_TRUE;
     config.sleep_config.sleep_mode              = WICED_SLEEP_MODE_NO_TRANSPORT;
     config.sleep_config.host_wake_mode          = WICED_SLEEP_WAKE_ACTIVE_HIGH;
     config.sleep_config.device_wake_mode        = WICED_SLEEP_WAKE_ACTIVE_LOW;
     config.sleep_config.device_wake_source      = WICED_SLEEP_WAKE_SOURCE_GPIO;
     config.sleep_config.device_wake_gpio_num    = WICED_P02;
+#endif
 
     config.nvram.link_key.id            = HEADSET_NVRAM_ID_LINK_KEYS;
     config.nvram.link_key.p_callback    = NULL;
@@ -385,10 +403,6 @@ wiced_result_t btheadset_post_bt_init(void)
     hci_control_le_enable();
 #endif
 
-#ifdef FASTPAIR_DISABLE
-    wiced_bt_gfps_provider_disable();
-#endif
-
     /*we will use the channel map provided by the phone*/
     ret = wiced_bt_dev_set_afh_channel_assessment(WICED_FALSE);
     WICED_BT_TRACE("wiced_bt_dev_set_afh_channel_assessment status:%d\n",ret);
@@ -397,6 +411,7 @@ wiced_result_t btheadset_post_bt_init(void)
         return WICED_BT_ERROR;
     }
 
+#ifdef OTA_FW_UPGRADE
     if (!wiced_ota_fw_upgrade_init(NULL, NULL, NULL))
     {
         WICED_BT_TRACE("wiced_ota_fw_upgrade_init failed\n");
@@ -407,6 +422,7 @@ wiced_result_t btheadset_post_bt_init(void)
         WICED_BT_TRACE("ofu_spp_init failed\n");
         return WICED_ERROR;
     }
+#endif
 
 #ifdef AUTO_ELNA_SWITCH
     wiced_hal_rfm_auto_elna_switch(1, TX_PU, RX_PU);
@@ -457,6 +473,8 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
                 if (WICED_SUCCESS != wiced_led_manager_init(&led_config))
                     WICED_BT_TRACE("btheadset LED init failed\n");
 #endif
+
+                WICED_BT_TRACE("Free RAM sizes: %d\n", wiced_memory_get_free_bytes());
             }
             break;
 
@@ -480,7 +498,9 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
             else
             {
                 WICED_BT_TRACE("Need to send user_confirmation_request, Key %d \n", p_event_data->user_confirmation_request.numeric_value);
+#ifdef FASTPAIR_ENABLE
                 wiced_bt_gfps_provider_seeker_passkey_set(p_event_data->user_confirmation_request.numeric_value);
+#endif
                 wiced_bt_dev_confirm_req_reply( WICED_BT_SUCCESS, p_event_data->user_confirmation_request.bd_addr );
             }
             break;
@@ -492,10 +512,10 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
 
         case BTM_PAIRING_IO_CAPABILITIES_BR_EDR_REQUEST_EVT:
             /* Use the default security for BR/EDR*/
-            WICED_BT_TRACE("BTM_PAIRING_IO_CAPABILITIES_BR_EDR_REQUEST_EVT (%d, %B)\n",
-                           wiced_bt_gfps_provider_pairing_state_get(),
+            WICED_BT_TRACE("BTM_PAIRING_IO_CAPABILITIES_BR_EDR_REQUEST_EVT (%B)\n",
                            p_event_data->pairing_io_capabilities_br_edr_request.bd_addr);
 
+#ifdef FASTPAIR_ENABLE
             if (wiced_bt_gfps_provider_pairing_state_get())
             {   // Google Fast Pair service Seeker triggers this pairing process.
                 /* Set local capability to Display/YesNo to identify local device is not a
@@ -505,6 +525,7 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
                 p_event_data->pairing_io_capabilities_br_edr_request.local_io_cap = BTM_IO_CAPABILITIES_DISPLAY_AND_YES_NO_INPUT;
             }
             else
+#endif
             {
                 p_event_data->pairing_io_capabilities_br_edr_request.local_io_cap = BTM_IO_CAPABILITIES_NONE;
             }
@@ -515,11 +536,11 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
             break;
 
         case BTM_PAIRING_IO_CAPABILITIES_BR_EDR_RESPONSE_EVT:
-            WICED_BT_TRACE("BTM_PAIRING_IO_CAPABILITIES_BR_EDR_RESPONSE_EVT (%d, %B, io_cap: 0x%02X) \n",
-                           wiced_bt_gfps_provider_pairing_state_get(),
+            WICED_BT_TRACE("BTM_PAIRING_IO_CAPABILITIES_BR_EDR_RESPONSE_EVT (%B, io_cap: 0x%02X) \n",
                            p_event_data->pairing_io_capabilities_br_edr_response.bd_addr,
                            p_event_data->pairing_io_capabilities_br_edr_response.io_cap);
 
+#ifdef FASTPAIR_ENABLE
             if (wiced_bt_gfps_provider_pairing_state_get())
             {   // Google Fast Pair service Seeker triggers this pairing process.
                 /* If the device capability is set to NoInput/NoOutput, end pairing, to avoid using
@@ -529,6 +550,7 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
                     WICED_BT_TRACE("Terminate the pairing process\n");
                 }
             }
+#endif
             break;
 
         case BTM_PAIRING_IO_CAPABILITIES_BLE_REQUEST_EVT:
@@ -550,11 +572,6 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
             {
                 pairing_result = p_pairing_cmpl->pairing_complete_info.br_edr.status;
                 WICED_BT_TRACE( "BREDR Pairing Result: %02x\n", pairing_result );
-                if (pairing_result == WICED_BT_SUCCESS)
-                {
-                    /* pairing success, check disable pairing mode or not */
-                    bt_hs_spk_button_check_disable_pairing();
-                }
             }
             else
             {
@@ -569,15 +586,8 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
 
             WICED_BT_TRACE( "Encryption Status:(%B) res:%d\n", p_encryption_status->bd_addr, p_encryption_status->result );
 
-#if 1
             bt_hs_spk_control_btm_event_handler_encryption_status(p_encryption_status);
-#endif
 
-#if (WICED_APP_LE_SLAVE_CLIENT_INCLUDED == TRUE)
-            if (p_encryption_status->transport == BT_TRANSPORT_LE)
-                le_slave_encryption_status_changed(p_encryption_status);
-#endif
-            //hci_control_send_encryption_changed_evt( p_encryption_status->result, p_encryption_status->bd_addr );
             break;
 
         case BTM_SECURITY_REQUEST_EVT:
@@ -627,14 +637,8 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
             }
             break;
 
-        case BTM_BLE_SCAN_STATE_CHANGED_EVT:
-            WICED_BT_TRACE("BTM_BLE_SCAN_STATE_CHANGED_EVT\n");
-            //hci_control_le_scan_state_changed( p_event_data->ble_scan_state_changed );
-            break;
-
         case BTM_BLE_ADVERT_STATE_CHANGED_EVT:
-            WICED_BT_TRACE("BTM_BLE_ADVERT_STATE_CHANGED_EVT\n");
-            //hci_control_le_advert_state_changed( p_event_data->ble_advert_state_changed );
+            WICED_BT_TRACE("BLE_ADVERT_STATE_CHANGED_EVT\n");
             break;
 
         case BTM_POWER_MANAGEMENT_STATUS_EVT:

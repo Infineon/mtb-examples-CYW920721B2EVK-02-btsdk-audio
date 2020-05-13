@@ -51,9 +51,11 @@
 #include "bt_hs_spk_control.h"
 #include "wiced_memory.h"
 #include "wiced_app_cfg.h"
-#include "wiced_bt_gfps.h"
 #include "btspk_nvram.h"
 #include "btspk_control_le.h"
+#ifdef FASTPAIR_ENABLE
+#include "wiced_bt_gfps.h"
+#endif
 
 /******************************************************
  *                     Constants
@@ -70,8 +72,9 @@
 /* UUID value of the Hello Sensor Characteristic, Configuration */
 #define UUID_HELLO_CHARACTERISTIC_LONG_MSG    0x2a, 0x99, 0x17, 0x5a, 0x3f, 0x4b, 0x8e, 0xb6, 0x91, 0x54, 0x2f, 0x09, 0xb8, 0x02, 0xab, 0x6e
 
+#ifdef FASTPAIR_ENABLE
 /* MODEL-specific definitions */
-#ifdef CYW20721B2
+#if defined(CYW20721B2) || defined(CYW43012C0)
 #define FASTPAIR_MODEL_ID                   0x82DA6E
 #else
 #define FASTPAIR_MODEL_ID                   0xCE948F //0xB49236 //0x000107 //0x140A02 // 0xCE948F
@@ -101,7 +104,7 @@ const uint8_t anti_spoofing_private_key[] = "";
 #warning "No Anti-Spooging key"
 
 #endif
-
+#endif //FASTPAIR_ENABLE
 
 /******************************************************
  *                     Structures
@@ -232,6 +235,7 @@ const uint8_t gatt_server_db[]=
         CHARACTERISTIC_UUID16( HANDLE_HSENS_BATTERY_SERVICE_CHAR_LEVEL, HANDLE_HSENS_BATTERY_SERVICE_CHAR_LEVEL_VAL,
                 GATT_UUID_BATTERY_LEVEL, LEGATTDB_CHAR_PROP_READ, LEGATTDB_PERM_READABLE),
 
+#ifdef FASTPAIR_ENABLE
     // Declare Fast Pair service
     PRIMARY_SERVICE_UUID16 (HANDLE_FASTPAIR_SERVICE, WICED_BT_GFPS_UUID16),
 
@@ -264,6 +268,7 @@ const uint8_t gatt_server_db[]=
     CHAR_DESCRIPTOR_UUID16_WRITABLE(HANDLE_FASTPAIR_SERVICE_CHAR_ACCOUNT_KEY_CFG_DESC,
                                     UUID_DESCRIPTOR_CLIENT_CHARACTERISTIC_CONFIGURATION,
                                     LEGATTDB_PERM_AUTH_READABLE | LEGATTDB_PERM_WRITE_REQ),
+#endif
 
     /* WICED Upgrade Service. */
 #ifdef OTA_SECURE_FIRMWARE_UPGRADE
@@ -341,7 +346,9 @@ void hci_control_le_init( void )
 
 static void headset_control_le_discoverabilty_change_callback(wiced_bool_t discoverable)
 {
+#ifdef FASTPAIR_ENABLE
     wiced_bt_gfps_provider_discoverablility_set(discoverable);
+#endif
 }
 
 /*
@@ -350,7 +357,9 @@ static void headset_control_le_discoverabilty_change_callback(wiced_bool_t disco
 void hci_control_le_enable( void )
 {
     wiced_bt_gatt_status_t     gatt_status;
+#ifdef FASTPAIR_ENABLE
     wiced_bt_gfps_provider_conf_t fastpair_conf = {0};
+#endif
     char appended_ble_dev_name[] = " LE";
     uint8_t *p_index;
     uint16_t dev_name_len;
@@ -362,8 +371,13 @@ void hci_control_le_enable( void )
 
     WICED_BT_TRACE("wiced_bt_gatt_db_init %d\n", gatt_status);
 
+#ifdef FASTPAIR_ENABLE
     // set Tx power level data type in ble advertisement
+#if defined(CYW20719B2) || defined(CYW20721B2) || defined(CYW20819A1) || defined (CYW20820A1)
     fastpair_conf.ble_tx_pwr_level = wiced_bt_cfg_settings.default_ble_power_level;
+#else
+    fastpair_conf.ble_tx_pwr_level = 0;
+#endif
 
     // set GATT event callback
     fastpair_conf.p_gatt_cb = hci_control_le_gatt_callback;
@@ -434,6 +448,12 @@ void hci_control_le_enable( void )
     {
         WICED_BT_TRACE("wiced_bt_gfps_provider_init fail\n");
     }
+#else
+    /* GATT registration */
+    gatt_status = wiced_bt_gatt_register( hci_control_le_gatt_callback );
+    WICED_BT_TRACE( "wiced_bt_gatt_register status %d\n", gatt_status );
+
+#endif
 
     /* Register the BLE discoverability change callback. */
     bt_hs_spk_ble_discoverability_change_callback_register(&headset_control_le_discoverabilty_change_callback);
@@ -530,7 +550,9 @@ wiced_result_t hci_control_le_connection_down( wiced_bt_gatt_connection_status_t
 */
 wiced_result_t hci_control_le_conn_status_callback( wiced_bt_gatt_connection_status_t *p_status )
 {
+#ifdef OTA_FW_UPGRADE
     wiced_ota_fw_upgrade_connection_status_event(p_status);
+#endif
 
     if ( p_status->connected )
     {
@@ -751,10 +773,12 @@ wiced_bt_gatt_status_t hci_control_le_get_value( uint16_t conn_id, wiced_bt_gatt
 
 wiced_bt_gatt_status_t hci_control_le_read_handler( uint16_t conn_id, wiced_bt_gatt_read_t *p_req )
 {
+#ifdef OTA_FW_UPGRADE
     if (wiced_ota_fw_upgrade_is_gatt_handle(p_req->handle))
     {
         return wiced_ota_fw_upgrade_read_handler(conn_id, p_req);
     }
+#endif
 
     WICED_BT_TRACE("[%s] [%d] [handle:%d] [conn_id:%d] [val:%d] [length:%d] \n",
             __func__, __LINE__, p_req->handle, conn_id, p_req->p_val,  p_req->p_val_len);
@@ -780,10 +804,12 @@ void hci_control_le_connect_timeout( uint32_t count )
  */
 wiced_result_t hci_control_le_write_handler( uint16_t conn_id, wiced_bt_gatt_write_t *p_req )
 {
+#ifdef OTA_FW_UPGRADE
     if (wiced_ota_fw_upgrade_is_gatt_handle(p_req->handle))
     {
         return wiced_ota_fw_upgrade_write_handler(conn_id, p_req);
     }
+#endif
 
     wiced_bt_gatt_status_t status = WICED_BT_GATT_PENDING;
     uint8_t attribute_value = *(uint8_t *)p_req->p_val;
@@ -822,10 +848,12 @@ wiced_result_t hci_control_le_mtu_handler( uint16_t conn_id, uint16_t mtu )
  */
 wiced_result_t  hci_control_le_conf_handler( uint16_t conn_id, uint16_t handle )
 {
+#ifdef OTA_FW_UPGRADE
     if (wiced_ota_fw_upgrade_is_gatt_handle(handle))
     {
         return wiced_ota_fw_upgrade_indication_cfm_handler(conn_id, handle);
     }
+#endif
 
     WICED_BT_TRACE( "hci_control_le_conf_handler conn_id:%d state:%d handle:%x\n", conn_id, le_control_cb.conn[conn_id].state, handle );
 

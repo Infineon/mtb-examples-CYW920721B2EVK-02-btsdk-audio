@@ -32,7 +32,9 @@
  */
 #include "ofu_spp.h"
 #include <hal/wiced_bt_trace.h>
+#ifdef OTA_FW_UPGRADE
 #include <spp_ota_fw_upgrade.h>
+#endif
 #include "wiced_app_cfg.h"
 #include <wiced_bt_spp.h>
 
@@ -77,6 +79,8 @@ void connection_down_callback(uint16_t handle)
 wiced_bool_t rx_data_callback(uint16_t handle, uint8_t *data, uint32_t data_len)
 {
     WICED_BT_TRACE("%s handle: %d len: %d %02x-%02x\n", __FUNCTION__, handle, data_len, data[0], data[data_len - 1]);
+#ifdef OTA_FW_UPGRADE
     wiced_spp_ota_firmware_upgrade_handler(handle, data, data_len);
+#endif
     return WICED_TRUE;
 }

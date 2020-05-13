@@ -48,18 +48,6 @@ typedef enum
         HANDLE_HSENS_GAP_SERVICE_CHAR_DEV_APPEARANCE, // characteristic handl
         HANDLE_HSENS_GAP_SERVICE_CHAR_DEV_APPEARANCE_VAL,// char value handle
 
-
-    HANDLE_HSENS_SERVICE = 0x28,
-        HANDLE_HSENS_SERVICE_CHAR_NOTIFY, // characteristic handl
-        HANDLE_HSENS_SERVICE_CHAR_NOTIFY_VAL, // char value handle
-        HANDLE_HSENS_SERVICE_CHAR_CFG_DESC, // charconfig desc handl
-
-        HANDLE_HSENS_SERVICE_CHAR_BLINK, // characteristic handl
-        HANDLE_HSENS_SERVICE_CHAR_BLINK_VAL, // char value handle
-
-        HANDLE_HSENS_SERVICE_CHAR_LONG_MSG, // characteristic handl
-        HANDLE_HSENS_SERVICE_CHAR_LONG_MSG_VAL, //long  char value handl
-
     HANDLE_HSENS_DEV_INFO_SERVICE = 0x40,
         HANDLE_HSENS_DEV_INFO_SERVICE_CHAR_MFR_NAME, // characteristic handle
         HANDLE_HSENS_DEV_INFO_SERVICE_CHAR_MFR_NAME_VAL,// char value handle
@@ -91,7 +79,6 @@ typedef enum
 }hello_sensor_db_tags;
 
 
-void hci_control_le_init( void );
 void hci_control_le_enable( void );
 
 

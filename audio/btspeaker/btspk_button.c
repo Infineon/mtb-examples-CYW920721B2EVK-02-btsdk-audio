@@ -106,25 +106,48 @@ static wiced_button_manager_configuration_t app_button_manager_configuration =
 /* Static button configuration */
 static wiced_button_configuration_t app_button_configurations[] =
 {
+#if defined(CYW43012C0)
+    [ PLAY_PAUSE_BUTTON ]                   = { PLATFORM_BUTTON_1, BUTTON_CLICK_EVENT | BUTTON_LONG_DURATION_EVENT | BUTTON_VERY_LONG_DURATION_EVENT , 0 },
+#else
     [ PLAY_PAUSE_BUTTON ]                   = { PLATFORM_BUTTON_1, BUTTON_CLICK_EVENT | BUTTON_LONG_DURATION_EVENT | BUTTON_VERY_LONG_DURATION_EVENT , 0 },
     [ VOLUME_UP_NEXT_TRACK_BUTTON ]         = { PLATFORM_BUTTON_2, BUTTON_CLICK_EVENT | BUTTON_LONG_DURATION_EVENT | BUTTON_VERY_LONG_DURATION_EVENT , 0 },
     [ VOLUME_DOWN_PREVIOUS_TRACK_BUTTON ]   = { PLATFORM_BUTTON_3, BUTTON_CLICK_EVENT | BUTTON_LONG_DURATION_EVENT | BUTTON_VERY_LONG_DURATION_EVENT , 0 },
     [ VOICE_REC_BUTTON ]                    = { PLATFORM_BUTTON_4, BUTTON_CLICK_EVENT | BUTTON_LONG_DURATION_EVENT | BUTTON_VERY_LONG_DURATION_EVENT, 0 },
+#endif
 };
 
 /* Button objects for the button manager */
 button_manager_button_t app_buttons[] =
 {
+#if defined(CYW43012C0)
+    [ PLAY_PAUSE_BUTTON ]                   = { &app_button_configurations[ PLAY_PAUSE_BUTTON ]        },
+#else
     [ PLAY_PAUSE_BUTTON ]                   = { &app_button_configurations[ PLAY_PAUSE_BUTTON ]        },
     [ VOLUME_UP_NEXT_TRACK_BUTTON ]         = { &app_button_configurations[ VOLUME_UP_NEXT_TRACK_BUTTON ]     },
     [ VOLUME_DOWN_PREVIOUS_TRACK_BUTTON ]   = { &app_button_configurations[ VOLUME_DOWN_PREVIOUS_TRACK_BUTTON ]  },
     [ VOICE_REC_BUTTON ]                    = { &app_button_configurations[ VOICE_REC_BUTTON ] },
+#endif
 };
 
 static button_manager_t app_button_manager;
 
 static bt_hs_spk_button_action_t app_button_action[] =
 {
+#if defined(CYW43012C0)
+    /* PLAY_PAUSE_BUTTON */
+    {
+        .action = ACTION_PAUSE_PLAY,
+        .button = PLAY_PAUSE_BUTTON,
+        .event  = BUTTON_CLICK_EVENT,
+        .state  = BUTTON_STATE_RELEASED,
+    },
+    {
+        .action = ACTION_BT_DISCOVERABLE,
+        .button = PLAY_PAUSE_BUTTON,
+        .event  = BUTTON_VERY_LONG_DURATION_EVENT,
+        .state  = BUTTON_STATE_HELD,
+    },
+#else
     /* PLAY_PAUSE_BUTTON */
     {
         .action = ACTION_PAUSE_PLAY,
@@ -180,6 +203,7 @@ static bt_hs_spk_button_action_t app_button_action[] =
         .event  = BUTTON_CLICK_EVENT,
         .state  = BUTTON_STATE_RELEASED,
     },
+#endif
 };
 
 /******************************************************
