@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -330,10 +330,10 @@ const wiced_bt_cfg_settings_t wiced_bt_cfg_settings =
     .max_number_of_buffer_pools         = 10,                                                           /**< Maximum number of buffer pools in p_btm_cfg_buf_pools and by wiced_create_pool */
 
     /* Interval of  random address refreshing */
-#ifdef FASTPAIR_DISABLE
-    .rpa_refresh_timeout                = 0,                                                           /**< Interval of  random address refreshing - secs */
-#else
+#ifdef FASTPAIR_ENABLE
     .rpa_refresh_timeout                = WICED_BT_CFG_DEFAULT_RANDOM_ADDRESS_CHANGE_TIMEOUT,          /**< Interval of  random address refreshing - secs */
+#else
+    .rpa_refresh_timeout                = 0,                                                           /**< Interval of  random address refreshing - secs */
 #endif
     /* BLE white list size */
     .ble_white_list_size                = 0,                                                           /**< Maximum number of white list devices allowed. Cannot be more than 128 */

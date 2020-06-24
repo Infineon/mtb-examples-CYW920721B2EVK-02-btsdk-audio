@@ -1,5 +1,5 @@
 /*
- * Copyright 2020, Cypress Semiconductor Corporation or a subsidiary of
+ * Copyright 2016-2020, Cypress Semiconductor Corporation or a subsidiary of
  * Cypress Semiconductor Corporation. All Rights Reserved.
  *
  * This software, including source code, documentation and related
@@ -705,11 +705,16 @@ static uint32_t headset_control_proc_rx_cmd( uint8_t *p_buffer, uint32_t length 
     STREAM_TO_UINT16(opcode, p_data);       // Get OpCode
     STREAM_TO_UINT16(payload_len, p_data);  // Gen Payload Length
 
-    WICED_BT_TRACE("[%s] cmd_opcode 0x%02x, len: %u\n", __FUNCTION__, opcode, payload_len);
+    //WICED_BT_TRACE("[%s] cmd_opcode 0x%02x, len: %u\n", __FUNCTION__, opcode, payload_len);
 
     switch(opcode)
     {
     case HCI_PLATFORM_COMMAND_AUDIO_INSERT:
+        if (payload_len != sizeof(param8))
+        {
+            break;
+        }
+
         STREAM_TO_UINT8(param8, p_data);
         WICED_BT_TRACE("Simulate audio_insert param:%d\n", param8);
         if (param8 == 0)
