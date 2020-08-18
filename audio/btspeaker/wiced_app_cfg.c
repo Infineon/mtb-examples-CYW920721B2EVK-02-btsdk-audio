@@ -191,7 +191,7 @@ uint8_t bt_avrc_ct_supported_events[] =
 /*****************************************************************************
  * wiced_bt core stack configuration
  ****************************************************************************/
-#define WICED_DEVICE_NAME                       "BTSpeaker"
+#define WICED_DEVICE_NAME                       APPNAME
 const wiced_bt_cfg_settings_t wiced_bt_cfg_settings =
 {
     .device_name                         = (uint8_t *)WICED_DEVICE_NAME,                               /**< Local device name (NULL terminated) */

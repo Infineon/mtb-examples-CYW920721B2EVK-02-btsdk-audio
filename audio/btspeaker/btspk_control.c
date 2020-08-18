@@ -647,6 +647,16 @@ wiced_result_t btspk_control_management_callback( wiced_bt_management_evt_t even
                     p_event_data->ble_phy_update_event.tx_phy,
                     p_event_data->ble_phy_update_event.rx_phy);
             break;
+#ifdef CYW20721B2
+        case BTM_BLE_REMOTE_CONNECTION_PARAM_REQ_EVT:
+            result = bt_hs_spk_control_btm_event_handler_ble_remote_conn_param_req(
+                    p_event_data->ble_rc_connection_param_req.bd_addr,
+                    p_event_data->ble_rc_connection_param_req.min_int,
+                    p_event_data->ble_rc_connection_param_req.max_int,
+                    p_event_data->ble_rc_connection_param_req.latency,
+                    p_event_data->ble_rc_connection_param_req.timeout);
+            break;
+#endif /* CYW20721B2 */
         default:
             result = WICED_BT_USE_DEFAULT_SECURITY;
             break;

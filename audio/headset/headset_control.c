@@ -95,6 +95,7 @@
 #include "wiced_bt_sdp.h"
 #include "wiced_bt_dev.h"
 #include "bt_hs_spk_control.h"
+#include "bt_hs_spk_audio_insert.h"
 #include "wiced_platform.h"
 #include "wiced_transport.h"
 #include "wiced_app.h"
@@ -177,6 +178,8 @@ const wiced_transport_cfg_t transport_cfg =
 #if defined(CYW43012C0)
 /* to adjust memory for audio application */
 uint8_t g_wiced_memory_pre_init_enable = 1;
+uint8_t g_wiced_memory_pre_init_max_ble_connections = 4;
+uint8_t g_wiced_memory_pre_init_num_ble_rl = 16;
 #endif
 
 extern const uint8_t btheadset_sdp_db[];
@@ -666,6 +669,16 @@ wiced_result_t btheadset_control_management_callback( wiced_bt_management_evt_t 
                     p_event_data->ble_phy_update_event.tx_phy,
                     p_event_data->ble_phy_update_event.rx_phy);
             break;
+#ifdef CYW20721B2
+        case BTM_BLE_REMOTE_CONNECTION_PARAM_REQ_EVT:
+            result = bt_hs_spk_control_btm_event_handler_ble_remote_conn_param_req(
+                    p_event_data->ble_rc_connection_param_req.bd_addr,
+                    p_event_data->ble_rc_connection_param_req.min_int,
+                    p_event_data->ble_rc_connection_param_req.max_int,
+                    p_event_data->ble_rc_connection_param_req.latency,
+                    p_event_data->ble_rc_connection_param_req.timeout);
+            break;
+#endif /* CYW20721B2 */
         default:
             result = WICED_BT_USE_DEFAULT_SECURITY;
             break;
@@ -684,10 +697,10 @@ static uint32_t headset_control_proc_rx_cmd( uint8_t *p_buffer, uint32_t length 
     uint16_t opcode;
     uint16_t payload_len;
     uint8_t *p_data = p_buffer;
-    uint32_t sample_rate = 16000;
     uint8_t wiced_hci_status = 1;
     wiced_result_t status;
     uint8_t param8;
+    bt_hs_spk_audio_insert_config_t audio_insert_config = {0};
 
     if ( !p_buffer )
     {
@@ -705,7 +718,7 @@ static uint32_t headset_control_proc_rx_cmd( uint8_t *p_buffer, uint32_t length 
     STREAM_TO_UINT16(opcode, p_data);       // Get OpCode
     STREAM_TO_UINT16(payload_len, p_data);  // Gen Payload Length
 
-    //WICED_BT_TRACE("[%s] cmd_opcode 0x%02x, len: %u\n", __FUNCTION__, opcode, payload_len);
+    WICED_BT_TRACE("[%s] cmd_opcode 0x%02x, len: %u\n", __FUNCTION__, opcode, payload_len);
 
     switch(opcode)
     {
@@ -724,8 +737,14 @@ static uint32_t headset_control_proc_rx_cmd( uint8_t *p_buffer, uint32_t length 
         }
         else
         {
+            audio_insert_config.sample_rate = 44100;
+            audio_insert_config.duration    = param8 * 1000;
+            audio_insert_config.p_source    = bt_hs_spk_handsfree_audio_manager_stream_check() ? sine_wave_mono : sine_wave_stereo;
+            audio_insert_config.len         = bt_hs_spk_handsfree_audio_manager_stream_check() ? sizeof(sine_wave_mono) : sizeof(sine_wave_stereo);
+            audio_insert_config.stopped_when_state_is_changed = WICED_TRUE;
+
             WICED_BT_TRACE("Start audio_insert duration:%d\n", param8);
-            status = bt_hs_spk_audio_insert_start(&sample_rate, param8);
+            status = bt_hs_spk_audio_insert_start(&audio_insert_config);
         }
         if (status == WICED_BT_SUCCESS)
             wiced_hci_status = 0;
